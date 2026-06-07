@@ -21,7 +21,7 @@ export default function Login() {
         setLoading(true);
 
         try {
-            await API.post("/auth/login", form);
+            await API.post("/api/auth/login", form);
             login();
             router.push("/dashboard");
         } catch (err: any) {

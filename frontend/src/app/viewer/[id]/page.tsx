@@ -2,47 +2,59 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Document, Page } from "react-pdf";
+import dynamic from "next/dynamic";
 import { DndContext } from "@dnd-kit/core";
 import API from "@/lib/api";
 import DraggableSignature from "@/components/DraggableSignature";
+
+// ✅ Disable SSR
+const Document = dynamic(
+    () => import("react-pdf").then((mod) => mod.Document),
+    { ssr: false }
+);
+
+const Page = dynamic(
+    () => import("react-pdf").then((mod) => mod.Page),
+    { ssr: false }
+);
 
 export default function Viewer() {
     const { id } = useParams();
     const [url, setUrl] = useState("");
 
+    // ✅ FIX: run ONLY in browser
     useEffect(() => {
-        API.get(`/api/docs/${id}`).then(res => {
+        const loadPdfWorker = async () => {
+            const pdfjs = await import("react-pdf").then((mod) => mod.pdfjs);
+
+            pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js"; // ✅ LOCAL FILE
+        };
+
+        loadPdfWorker();
+    }, []);
+
+    useEffect(() => {
+        API.get(`/api/docs/${id}`).then((res) => {
             setUrl(res.data.url);
         });
     }, [id]);
-
-    const handleSign = async () => {
-        await API.post(`/api/docs/${id}/sign`, {
-            x: 100,
-            y: 100,
-        });
-
-        alert("Signed!");
-    };
 
     return (
         <div className="flex flex-col items-center relative">
             {url && (
                 <DndContext>
                     <div className="relative">
-                        <Document file={url}>
+                        <Document
+                            file={url}
+                            onLoadError={(err) => console.log("PDF ERROR:", err)}
+                        >
                             <Page pageNumber={1} />
                         </Document>
 
-                        {/* 🔥 Signature overlay */}
                         <DraggableSignature />
                     </div>
                 </DndContext>
             )}
-            <button onClick={handleSign} className="mt-4 bg-green-500 text-white px-4 py-2">
-                Sign Document
-            </button>
         </div>
     );
 }

@@ -10,7 +10,7 @@ export const AuthProvider = ({ children }: any) => {
 
     // 🔥 check auth via backend
     useEffect(() => {
-        API.get("/protected")
+        API.get("/api/protected")
             .then(() => setIsLoggedIn(true))
             .catch(() => setIsLoggedIn(false));
     }, []);
@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }: any) => {
     const login = () => setIsLoggedIn(true);
 
     const logout = async () => {
-        await API.post("/auth/logout");
+        await API.post("/api/auth/logout");
         setIsLoggedIn(false);
     };
 

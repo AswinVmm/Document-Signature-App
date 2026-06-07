@@ -18,7 +18,8 @@ export const uploadDocument = async (req, res) => {
             await supabase.storage
                 .from("documents")
                 .upload(fileName, file.buffer, {
-                    contentType: file.mimetype,
+                    contentType: "application/pdf",
+                    upsert: false,
                 });
 
         if (storageError) {
