@@ -7,7 +7,7 @@ import { DndContext } from "@dnd-kit/core";
 import API from "@/lib/api";
 import DraggableSignature from "@/components/DraggableSignature";
 
-// ✅ Disable SSR
+// Disable SSR
 const Document = dynamic(
     () => import("react-pdf").then((mod) => mod.Document),
     { ssr: false }
@@ -22,18 +22,15 @@ export default function Viewer() {
     const { id } = useParams();
     const [url, setUrl] = useState("");
 
-    // ✅ FIX: run ONLY in browser
     useEffect(() => {
-        const loadPdfWorker = async () => {
-            const pdfjs = await import("react-pdf").then((mod) => mod.pdfjs);
+        // ✅ Import ONLY in browser
+        import("react-pdf").then((mod) => {
+            mod.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+                "pdfjs-dist/build/pdf.worker.min.mjs",
+                import.meta.url
+            ).toString();
+        });
 
-            pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js"; // ✅ LOCAL FILE
-        };
-
-        loadPdfWorker();
-    }, []);
-
-    useEffect(() => {
         API.get(`/api/docs/${id}`).then((res) => {
             setUrl(res.data.url);
         });
@@ -44,10 +41,7 @@ export default function Viewer() {
             {url && (
                 <DndContext>
                     <div className="relative">
-                        <Document
-                            file={url}
-                            onLoadError={(err) => console.log("PDF ERROR:", err)}
-                        >
+                        <Document file={url}>
                             <Page pageNumber={1} />
                         </Document>
 
