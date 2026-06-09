@@ -21,6 +21,7 @@ const Page = dynamic(
 export default function Viewer() {
     const { id } = useParams();
     const [url, setUrl] = useState("");
+    const [position, setPosition] = useState({ x: 0, y: 0 });
 
     useEffect(() => {
         // ✅ Import ONLY in browser
@@ -45,7 +46,7 @@ export default function Viewer() {
                             <Page pageNumber={1} />
                         </Document>
 
-                        <DraggableSignature />
+                        <DraggableSignature onMove={setPosition} />
                     </div>
                 </DndContext>
             )}
