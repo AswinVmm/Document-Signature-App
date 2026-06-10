@@ -22,6 +22,22 @@ export default function Viewer() {
     const { id } = useParams();
     const [url, setUrl] = useState("");
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [pdfSize, setPdfSize] = useState({ width: 0, height: 0 });
+    const normalized = {
+        x: position.x / pdfSize.width,
+        y: position.y / pdfSize.height,
+    };
+
+    useEffect(() => {
+        const signDocument = async () => {
+            await API.post(`/api/docs/${id}/sign`, {
+                x: normalized.x,
+                y: normalized.y,
+            });
+        };
+
+        signDocument();
+    }, [id, normalized]);
 
     useEffect(() => {
         // ✅ Import ONLY in browser
@@ -35,6 +51,7 @@ export default function Viewer() {
         API.get(`/api/docs/${id}`).then((res) => {
             setUrl(res.data.url);
         });
+
     }, [id]);
 
     return (
@@ -43,10 +60,26 @@ export default function Viewer() {
                 <DndContext>
                     <div className="relative">
                         <Document file={url}>
-                            <Page pageNumber={1} />
+                            <Page
+                                pageNumber={1}
+                                onLoadSuccess={(page) => {
+                                    setPdfSize({
+                                        width: page.width,
+                                        height: page.height,
+                                    });
+                                }}
+                            />
                         </Document>
 
                         <DraggableSignature onMove={setPosition} />
+                        <button
+                            onClick={() => {
+                                window.open(`/api/docs/${id}/export`);
+                            }}
+                            className="mt-4 bg-blue-500 text-white px-4 py-2"
+                        >
+                            Download Signed PDF
+                        </button>
                     </div>
                 </DndContext>
             )}

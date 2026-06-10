@@ -32,6 +32,19 @@ app.get("/api/protected", authMiddleware, (req, res) => {
     });
 });
 
+app.post("/api/docs/:id/sign", async (req, res) => {
+    const { x, y } = req.body;
+
+    // store in DB
+    await db.signatures.create({
+        docId: req.params.id,
+        x,
+        y,
+    });
+
+    res.json({ success: true });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
