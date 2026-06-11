@@ -1,21 +1,11 @@
 "use client";
 
 import { useDraggable } from "@dnd-kit/core";
-import { useEffect } from "react";
 
-export default function DraggableSignature({ onMove }: any) {
+export default function DraggableSignature({ image }: any) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: "signature",
     });
-
-    useEffect(() => {
-        if (transform) {
-            onMove({
-                x: transform.x,
-                y: transform.y,
-            });
-        }
-    }, [transform, onMove]);
 
     const style = {
         transform: transform
@@ -29,9 +19,15 @@ export default function DraggableSignature({ onMove }: any) {
             style={style}
             {...listeners}
             {...attributes}
-            className="absolute bg-black text-white px-2 py-1 cursor-move"
+            className="absolute cursor-move"
         >
-            Signature ✍️
+            {image ? (
+                <img src={image} className="w-32" />
+            ) : (
+                <div className="bg-black text-white px-2 py-1">
+                    Signature ✍️
+                </div>
+            )}
         </div>
     );
 }

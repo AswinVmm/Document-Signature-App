@@ -107,52 +107,87 @@ export const deleteDocument = async (req, res) => {
 };
 
 export const signDocument = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { x, y } = req.body;
+    const { id } = req.params;
+    const { normalized, page, image } = req.body;
 
-        // 1. get document
-        const { data: doc } = await supabase
-            .from("documents")
-            .select("*")
-            .eq("id", id)
-            .single();
+    const { error } = await supabase
+        .from("signatures")
+        .upsert([
+            {
+                document_id: id,
+                x: normalized.x,
+                y: normalized.y,
+                page,
+                image,
+            },
+        ]);
 
-        if (!doc) return res.status(404).json({ error: "Not found" });
+    if (error) return res.status(400).json({ error: error.message });
 
-        // 2. get signed URL (read file)
-        const { data: signed } = await supabase.storage
-            .from("documents")
-            .createSignedUrl(doc.filename, 60);
+    res.json({ message: "Position saved" });
+};
 
-        const existingPdfBytes = await fetch(signed.signedUrl)
-            .then(res => res.arrayBuffer());
+export const exportSignedPdf = async (req, res) => {
+    const { id } = req.params;
 
-        // 3. modify PDF
-        const pdfDoc = await PDFDocument.load(existingPdfBytes);
-        const page = pdfDoc.getPages()[0];
+    const { data: doc } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-        page.drawText("Signed", {
+    const { data: sig } = await supabase
+        .from("signatures")
+        .select("*")
+        .eq("document_id", id)
+        .single();
+
+    if (!sig) return res.status(400).json({ error: "No signature found" });
+
+    // get PDF
+    const { data: signedUrl } = await supabase.storage
+        .from("documents")
+        .createSignedUrl(doc.filename, 60);
+
+    const pdfBytes = await fetch(signedUrl.signedUrl).then(res =>
+        res.arrayBuffer()
+    );
+
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+
+    const pages = pdfDoc.getPages();
+    const page = pages[sig.page - 1];
+
+    const { width, height } = page.getSize();
+
+    // ✅ Convert normalized → actual
+    const x = sig.x * width;
+    const y = height - sig.y * height;
+
+    // ✅ If using image signature
+    if (sig.image) {
+        const base64 = sig.image.split(",")[1];
+        const imageBytes = Buffer.from(base64, "base64");
+
+        const png = await pdfDoc.embedPng(imageBytes);
+
+        page.drawImage(png, {
+            x,
+            y,
+            width: 120,
+            height: 50,
+        });
+    } else {
+        page.drawText("Signature", {
             x,
             y,
             size: 20,
         });
-
-        const pdfBytes = await pdfDoc.save();
-
-        // 4. upload new signed file
-        const newFileName = `signed-${doc.filename}`;
-
-        await supabase.storage
-            .from("documents")
-            .upload(newFileName, pdfBytes, {
-                contentType: "application/pdf",
-                upsert: true,
-            });
-
-        res.json({ message: "Document signed", file: newFileName });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
     }
+
+    const finalPdf = await pdfDoc.save();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=signed.pdf");
+    res.send(Buffer.from(finalPdf));
 };

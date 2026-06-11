@@ -1,7 +1,7 @@
 import express from "express";
 import { upload } from "../middleware/upload.js";
 import authMiddleware from "../middleware/authMiddleware.js";
-import { uploadDocument, getDocument, signDocument, listDocuments, deleteDocument } from "../controllers/docsController.js";
+import { uploadDocument, getDocument, signDocument, listDocuments, deleteDocument, exportSignedPdf } from "../controllers/docsController.js";
 
 const router = express.Router();
 
@@ -18,5 +18,6 @@ router.post(
 router.get("/:id", authMiddleware, getDocument);
 router.post("/:id/sign", authMiddleware, signDocument);
 router.delete("/:id", authMiddleware, deleteDocument);
+router.get("/:id/export", exportSignedPdf);
 
 export default router;
