@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { DndContext } from "@dnd-kit/core";
+import { restrictToParentElement } from "@dnd-kit/modifiers";
 import API from "@/lib/api";
 import DraggableSignature from "@/components/DraggableSignature";
+import SignaturePad from "@/components/SignaturePad";
 
 // Disable SSR
 const Document = dynamic(
@@ -25,11 +27,16 @@ export default function Viewer() {
     const [pdfSize, setPdfSize] = useState({ width: 0, height: 0 });
     const [numPages, setNumPages] = useState(0);
     const [signatureImage, setSignatureImage] = useState<string | null>(null);
+    const pdfRef = useRef<HTMLDivElement>(null);
 
-    const normalized = {
-        x: pdfSize.width ? position.x / pdfSize.width : 0,
-        y: pdfSize.height ? position.y / pdfSize.height : 0,
-    };
+    const rect = pdfRef.current?.getBoundingClientRect();
+
+    const normalized = rect
+        ? {
+            x: position.x / rect.width,
+            y: position.y / rect.height,
+        }
+        : { x: 0, y: 0 };
 
     useEffect(() => {
         // ✅ Import ONLY in browser
@@ -59,8 +66,9 @@ export default function Viewer() {
                             y: prev.y + delta.y,
                         }));
                     }}
+                    modifiers={[restrictToParentElement]}
                 >
-                    <div className="relative">
+                    <div ref={pdfRef} className="relative">
 
                         <Document
                             file={url}
@@ -71,11 +79,19 @@ export default function Viewer() {
                                     key={i}
                                     pageNumber={i + 1}
                                     width={600}
+                                    onLoadSuccess={(page) => {
+                                        const viewport = page.getViewport({ scale: 1 });
+                                        setPdfSize({
+                                            width: viewport.width,
+                                            height: viewport.height,
+                                        });
+                                    }}
                                 />
                             ))}
                         </Document>
+                        <SignaturePad onSave={setSignatureImage} />
 
-                        <DraggableSignature onMove={setPosition} image={signatureImage} />
+                        <DraggableSignature onMove={setPosition} image={signatureImage} position={position} />
 
                         <button
                             onClick={() => {
@@ -101,6 +117,26 @@ export default function Viewer() {
                                 };
 
                                 if (file) reader.readAsDataURL(file);
+                            }}
+                        />
+
+                        <input
+                            type="text"
+                            placeholder="Type your signature"
+                            className="border p-2 mt-2"
+                            onChange={(e) => {
+                                const text = e.target.value;
+
+                                const canvas = document.createElement("canvas");
+                                const ctx = canvas.getContext("2d")!;
+
+                                canvas.width = 300;
+                                canvas.height = 100;
+
+                                ctx.font = "30px cursive";
+                                ctx.fillText(text, 10, 50);
+
+                                setSignatureImage(canvas.toDataURL());
                             }}
                         />
 

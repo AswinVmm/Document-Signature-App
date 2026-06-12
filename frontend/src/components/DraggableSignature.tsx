@@ -1,13 +1,17 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
-export default function DraggableSignature({ image }: any) {
+export default function DraggableSignature({ image, position }: any) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: "signature",
     });
 
-    const style = {
+    const style: CSSProperties = {
+        position: "absolute",
+        left: position.x,
+        top: position.y,
         transform: transform
             ? `translate(${transform.x}px, ${transform.y}px)`
             : undefined,
@@ -19,7 +23,7 @@ export default function DraggableSignature({ image }: any) {
             style={style}
             {...listeners}
             {...attributes}
-            className="absolute cursor-move"
+            className="cursor-move"
         >
             {image ? (
                 <img src={image} className="w-32" />
