@@ -122,7 +122,7 @@ export const signDocument = async (req, res) => {
             },
         ]);
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) { console.log("Supabase error:", error); return res.status(400).json({ error: error.message }) };
 
     res.json({ message: "Position saved" });
 };

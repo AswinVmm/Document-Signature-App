@@ -13,8 +13,9 @@ export default function DraggableSignature({ image, position }: any) {
         left: position.x,
         top: position.y,
         transform: transform
-            ? `translate(${transform.x}px, ${transform.y}px)`
+            ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
             : undefined,
+        zIndex: 50,
     };
 
     return (

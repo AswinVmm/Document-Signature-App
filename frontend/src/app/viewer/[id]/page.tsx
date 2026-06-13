@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { DndContext } from "@dnd-kit/core";
+import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, } from "@dnd-kit/core";
 import { restrictToParentElement } from "@dnd-kit/modifiers";
 import API from "@/lib/api";
 import DraggableSignature from "@/components/DraggableSignature";
@@ -30,6 +30,14 @@ export default function Viewer() {
     const pdfRef = useRef<HTMLDivElement>(null);
 
     const rect = pdfRef.current?.getBoundingClientRect();
+    const sensors = useSensors(
+        useSensor(MouseSensor, {
+            activationConstraint: {
+                distance: 5, // prevents accidental clicks
+            },
+        }),
+        useSensor(TouchSensor)
+    );
 
     const normalized = rect
         ? {
@@ -55,8 +63,10 @@ export default function Viewer() {
 
     return (
         <div className="flex flex-col items-center relative">
+
             {url && (
                 <DndContext
+                    sensors={sensors}
                     onDragEnd={(event) => {
                         const { delta } = event;
 
@@ -90,7 +100,6 @@ export default function Viewer() {
                             ))}
                         </Document>
                         <SignaturePad onSave={setSignatureImage} />
-
                         <DraggableSignature onMove={setPosition} image={signatureImage} position={position} />
 
                         <button
@@ -142,11 +151,31 @@ export default function Viewer() {
 
                         <button
                             onClick={async () => {
+                                if (!signatureImage) {
+                                    alert("Please create or upload a signature first");
+                                    return;
+                                }
+
+                                if (!pdfRef.current) {
+                                    alert("PDF not ready yet");
+                                    return;
+                                }
+
+                                if (!isFinite(normalized.x) || !isFinite(normalized.y)) {
+                                    alert("Invalid position");
+                                    return;
+                                }
+
                                 try {
-                                    await API.post(`/api/docs/${id}/sign`, { normalized, page: position.page, image: signatureImage });
+                                    await API.post(`/api/docs/${id}/sign`, {
+                                        normalized,
+                                        page: position.page,
+                                        image: signatureImage,
+                                    });
+
                                     alert("Position saved!");
-                                } catch (err) {
-                                    console.error(err);
+                                } catch (err: any) {
+                                    console.error(err.response?.data || err);
                                     alert("Failed to save");
                                 }
                             }}
