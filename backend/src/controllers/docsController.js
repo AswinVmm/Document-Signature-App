@@ -169,9 +169,17 @@ export const exportSignedPdf = async (req, res) => {
         const base64 = sig.image.split(",")[1];
         const imageBytes = Buffer.from(base64, "base64");
 
-        const png = await pdfDoc.embedPng(imageBytes);
+        let embeddedImage;
 
-        page.drawImage(png, {
+        if (sig.image.includes("image/png")) {
+            embeddedImage = await pdfDoc.embedPng(imageBytes);
+        } else if (sig.image.includes("image/jpeg") || sig.image.includes("image/jpg")) {
+            embeddedImage = await pdfDoc.embedJpg(imageBytes);
+        } else {
+            throw new Error("Unsupported image format");
+        }
+
+        page.drawImage(embeddedImage, {
             x,
             y,
             width: 120,
