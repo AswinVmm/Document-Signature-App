@@ -108,17 +108,19 @@ export const deleteDocument = async (req, res) => {
 
 export const signDocument = async (req, res) => {
     const { id } = req.params;
-    const { normalized, page, image } = req.body;
+    const { normalized, page, image, width, height } = req.body;
 
     const { error } = await supabase
         .from("signatures")
-        .upsert([
+        .insert([
             {
                 document_id: id,
                 x: normalized.x,
                 y: normalized.y,
                 page,
                 image,
+                width,
+                height,
             },
         ]);
 
@@ -136,14 +138,18 @@ export const exportSignedPdf = async (req, res) => {
         .eq("id", id)
         .single();
 
-    const { data: sig } = await supabase
+    const { data: sigs } = await supabase
         .from("signatures")
         .select("*")
         .eq("document_id", id)
-        .single();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-    if (!sig) return res.status(400).json({ error: "No signature found" });
+    const sig = sigs?.[0];
 
+    if (!sig) {
+        return res.status(400).json({ error: "No signature found" });
+    }
     // get PDF
     const { data: signedUrl } = await supabase.storage
         .from("documents")
@@ -153,7 +159,9 @@ export const exportSignedPdf = async (req, res) => {
         res.arrayBuffer()
     );
 
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pdfDoc = await PDFDocument.load(pdfBytes, {
+        ignoreEncryption: true,
+    });
 
     const pages = pdfDoc.getPages();
     const page = pages[sig.page - 1];
@@ -161,8 +169,11 @@ export const exportSignedPdf = async (req, res) => {
     const { width, height } = page.getSize();
 
     // ✅ Convert normalized → actual
-    const x = sig.x * width;
-    const y = height - sig.y * height;
+    const drawWidth = sig.width * width;
+    const drawHeight = sig.height * height;
+
+    const x = sig.x * width - 8;
+    const y = height - (sig.y * height) - drawHeight + 11;
 
     // ✅ If using image signature
     if (sig.image) {
@@ -182,8 +193,8 @@ export const exportSignedPdf = async (req, res) => {
         page.drawImage(embeddedImage, {
             x,
             y,
-            width: 120,
-            height: 50,
+            width: sig.width * width,
+            height: sig.height * height,
         });
     } else {
         page.drawText("Signature", {

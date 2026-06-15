@@ -28,8 +28,9 @@ export default function Viewer() {
     const [numPages, setNumPages] = useState(0);
     const [signatureImage, setSignatureImage] = useState<string | null>(null);
     const pdfRef = useRef<HTMLDivElement>(null);
+    const [signatureSize, setSignatureSize] = useState({ width: 120, height: 50 });
 
-    const rect = pdfRef.current?.getBoundingClientRect();
+    // const rect = pdfRef.current?.getBoundingClientRect();
     const sensors = useSensors(
         useSensor(MouseSensor, {
             activationConstraint: {
@@ -39,12 +40,13 @@ export default function Viewer() {
         useSensor(TouchSensor)
     );
 
-    const normalized = rect
-        ? {
-            x: position.x / rect.width,
-            y: position.y / rect.height,
-        }
-        : { x: 0, y: 0 };
+    // normalized position/size relative to the PDF dimensions
+    const normalized = {
+        x: pdfSize.width ? position.x / pdfSize.width : 0,
+        y: pdfSize.height ? position.y / pdfSize.height : 0,
+        width: pdfSize.width ? signatureSize.width / pdfSize.width : 0,
+        height: pdfSize.height ? signatureSize.height / pdfSize.height : 0,
+    };
 
     useEffect(() => {
         // ✅ Import ONLY in browser
@@ -100,7 +102,7 @@ export default function Viewer() {
                             ))}
                         </Document>
                         <SignaturePad onSave={setSignatureImage} />
-                        <DraggableSignature onMove={setPosition} image={signatureImage} position={position} />
+                        <DraggableSignature onMove={setPosition} image={signatureImage} position={position} size={signatureSize} onResize={setSignatureSize} />
 
                         <button
                             onClick={() => {
@@ -171,6 +173,8 @@ export default function Viewer() {
                                         normalized,
                                         page: position.page,
                                         image: signatureImage,
+                                        width: normalized.width,
+                                        height: normalized.height
                                     });
 
                                     alert("Position saved!");
