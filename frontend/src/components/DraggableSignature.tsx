@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
 export default function DraggableSignature({
+    id,
     image,
     position,
     size,
     onResize,
 }: any) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
-        id: "signature",
+        id,
     });
 
     const [resizing, setResizing] = useState(false);

@@ -143,9 +143,8 @@ export const exportSignedPdf = async (req, res) => {
         .select("*")
         .eq("document_id", id)
         .order("created_at", { ascending: false })
-        .limit(1);
 
-    const sig = sigs?.[0];
+
 
     if (!sig) {
         return res.status(400).json({ error: "No signature found" });
@@ -164,19 +163,16 @@ export const exportSignedPdf = async (req, res) => {
     });
 
     const pages = pdfDoc.getPages();
-    const page = pages[sig.page - 1];
+    for (const sig of sigs) {
+        const page = pages[sig.page - 1];
+        const { width, height } = page.getSize();
 
-    const { width, height } = page.getSize();
+        const drawWidth = sig.width * width;
+        const drawHeight = sig.height * height;
 
-    // ✅ Convert normalized → actual
-    const drawWidth = sig.width * width;
-    const drawHeight = sig.height * height;
+        const x = sig.x * width;
+        const y = height - (sig.y * height) - drawHeight;
 
-    const x = sig.x * width - 8;
-    const y = height - (sig.y * height) - drawHeight + 11;
-
-    // ✅ If using image signature
-    if (sig.image) {
         const base64 = sig.image.split(",")[1];
         const imageBytes = Buffer.from(base64, "base64");
 
@@ -184,26 +180,24 @@ export const exportSignedPdf = async (req, res) => {
 
         if (sig.image.includes("image/png")) {
             embeddedImage = await pdfDoc.embedPng(imageBytes);
-        } else if (sig.image.includes("image/jpeg") || sig.image.includes("image/jpg")) {
-            embeddedImage = await pdfDoc.embedJpg(imageBytes);
         } else {
-            throw new Error("Unsupported image format");
+            embeddedImage = await pdfDoc.embedJpg(imageBytes);
         }
 
         page.drawImage(embeddedImage, {
             x,
             y,
-            width: sig.width * width,
-            height: sig.height * height,
+            width: drawWidth,
+            height: drawHeight,
         });
-    } else {
-        page.drawText("Signature", {
+
+        // ✅ Draw role label (DocuSign style)
+        page.drawText(sig.role || "Signer", {
             x,
-            y,
-            size: 20,
+            y: y - 12,
+            size: 10,
         });
     }
-
     const finalPdf = await pdfDoc.save();
 
     res.setHeader("Content-Type", "application/pdf");

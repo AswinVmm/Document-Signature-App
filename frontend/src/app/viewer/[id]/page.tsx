@@ -20,10 +20,20 @@ const Page = dynamic(
     { ssr: false }
 );
 
+type Signature = {
+    id: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    page: number;
+    role: string;
+};
+
 export default function Viewer() {
     const { id } = useParams();
     const [url, setUrl] = useState("");
-    const [position, setPosition] = useState({ x: 0, y: 0, page: 1 });
+    const [signatures, setSignatures] = useState<Signature[]>([]);
     const [pdfSize, setPdfSize] = useState({ width: 0, height: 0 });
     const [numPages, setNumPages] = useState(0);
     const [signatureImage, setSignatureImage] = useState<string | null>(null);
@@ -41,13 +51,6 @@ export default function Viewer() {
     );
 
     // normalized position/size relative to the PDF dimensions
-    const normalized = {
-        x: pdfSize.width ? position.x / pdfSize.width : 0,
-        y: pdfSize.height ? position.y / pdfSize.height : 0,
-        width: pdfSize.width ? signatureSize.width / pdfSize.width : 0,
-        height: pdfSize.height ? signatureSize.height / pdfSize.height : 0,
-    };
-
     useEffect(() => {
         // ✅ Import ONLY in browser
         import("react-pdf").then((mod) => {
@@ -70,13 +73,19 @@ export default function Viewer() {
                 <DndContext
                     sensors={sensors}
                     onDragEnd={(event) => {
-                        const { delta } = event;
+                        const { delta, active } = event;
 
-                        setPosition((prev) => ({
-                            ...prev,
-                            x: prev.x + delta.x,
-                            y: prev.y + delta.y,
-                        }));
+                        setSignatures((prev) =>
+                            prev.map((sig) =>
+                                sig.id === active.id
+                                    ? {
+                                        ...sig,
+                                        x: sig.x + delta.x,
+                                        y: sig.y + delta.y,
+                                    }
+                                    : sig
+                            )
+                        );
                     }}
                     modifiers={[restrictToParentElement]}
                 >
@@ -102,7 +111,21 @@ export default function Viewer() {
                             ))}
                         </Document>
                         <SignaturePad onSave={setSignatureImage} />
-                        <DraggableSignature onMove={setPosition} image={signatureImage} position={position} size={signatureSize} onResize={setSignatureSize} />
+                        {signatures.map((sig, index) => (
+                            <DraggableSignature
+                                key={sig.id}
+                                id={sig.id}
+                                image={signatureImage}
+                                position={{ x: sig.x, y: sig.y }}
+                                size={{ width: sig.width, height: sig.height }}
+                                onResize={(newSize: { width: number; height: number }) => {
+                                    const updated = [...signatures];
+                                    updated[index].width = newSize.width;
+                                    updated[index].height = newSize.height;
+                                    setSignatures(updated);
+                                }}
+                            />
+                        ))}
 
                         <button
                             onClick={() => {
@@ -115,6 +138,50 @@ export default function Viewer() {
                         >
                             Download Signed PDF
                         </button>
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => {
+                                    setSignatures((prev) => [
+                                        ...prev,
+                                        {
+                                            id: Date.now(),
+                                            x: 50,
+                                            y: 50,
+                                            width: 120,
+                                            height: 50,
+                                            page: 1,
+                                            role: "Signer",
+                                        },
+                                    ]);
+                                }}
+                                className="bg-black text-white px-4 py-2"
+                            >
+                                + Add Signature Field
+                            </button>
+
+                            <div className="fixed right-0 top-0 h-full w-60 bg-gray-100 p-4 shadow">
+                                <h2 className="font-bold mb-2">Recipients</h2>
+
+                                {signatures.map((sig, index) => (
+                                    <div key={sig.id} className="mb-3">
+                                        <select
+                                            value={sig.role}
+                                            onChange={(e) => {
+                                                const updated = [...signatures];
+                                                updated[index].role = e.target.value;
+                                                setSignatures(updated);
+                                            }}
+                                            className="w-full border p-1"
+                                        >
+                                            <option>Signer</option>
+                                            <option>Guarantor</option>
+                                            <option>Witness</option>
+                                            <option>Approver</option>
+                                        </select>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
                         <input
                             type="file"
@@ -163,19 +230,30 @@ export default function Viewer() {
                                     return;
                                 }
 
-                                if (!isFinite(normalized.x) || !isFinite(normalized.y)) {
-                                    alert("Invalid position");
+                                if (!pdfSize.width || !pdfSize.height) {
+                                    alert("PDF dimensions not available yet");
+                                    return;
+                                }
+
+                                if (signatures.some((sig) => !isFinite(sig.x) || !isFinite(sig.y))) {
+                                    alert("Invalid signature position");
                                     return;
                                 }
 
                                 try {
-                                    await API.post(`/api/docs/${id}/sign`, {
-                                        normalized,
-                                        page: position.page,
-                                        image: signatureImage,
-                                        width: normalized.width,
-                                        height: normalized.height
-                                    });
+                                    for (const sig of signatures) {
+                                        await API.post(`/api/docs/${id}/sign`, {
+                                            normalized: {
+                                                x: sig.x / pdfSize.width,
+                                                y: sig.y / pdfSize.height,
+                                            },
+                                            width: sig.width / pdfSize.width,
+                                            height: sig.height / pdfSize.height,
+                                            page: sig.page,
+                                            image: signatureImage,
+                                            role: sig.role,
+                                        });
+                                    }
 
                                     alert("Position saved!");
                                 } catch (err: any) {
