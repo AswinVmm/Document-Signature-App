@@ -8,6 +8,7 @@ const AuthContext = createContext<any>(null);
 export const AuthProvider = ({ children }: any) => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [role, setRole] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
 
     // check auth via backend
     useEffect(() => {
@@ -19,7 +20,8 @@ export const AuthProvider = ({ children }: any) => {
             .catch(() => {
                 setIsLoggedIn(false);
                 setRole(null);
-            });
+            })
+            .finally(() => setLoading(false));
     }, []);
 
     const login = (userRole: string) => {

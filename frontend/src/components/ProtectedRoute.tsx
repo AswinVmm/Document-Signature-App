@@ -5,15 +5,16 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function ProtectedRoute({ children }: any) {
-    const { isLoggedIn } = useAuth();
+    const { isLoggedIn, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!isLoggedIn) {
+        if (!loading && !isLoggedIn) {
             router.push("/login");
         }
-    }, [isLoggedIn]);
+    }, [loading, isLoggedIn]);
 
+    if (loading) return <div>Loading...</div>; // Show a loading state while checking auth
     if (!isLoggedIn) return null; // prevent flicker
 
     return children;

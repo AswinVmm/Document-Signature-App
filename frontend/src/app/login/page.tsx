@@ -21,9 +21,7 @@ export default function Login() {
         setLoading(true);
 
         try {
-            // await API.post("/api/auth/login", form);
-            // login();
-            // router.push("/dashboard");
+
             const res = await API.post("/api/auth/login", form);
 
             const role = res.data.user.role;
