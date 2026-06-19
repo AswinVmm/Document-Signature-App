@@ -17,7 +17,7 @@ export default function Dashboard() {
     return (
         <ProtectedRoute>
             <div className="flex h-screen items-center justify-center">
-                <h1 className="text-3xl">Welcome to Dashboard 🚀</h1>
+                <h1 className="text-3xl">Welcome to Dashboard</h1>
             </div>
         </ProtectedRoute>
     );

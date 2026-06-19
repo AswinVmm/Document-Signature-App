@@ -10,6 +10,7 @@ export default function DraggableSignature({
     size,
     onResize,
     onSelect,
+    onDelete,
 }: any) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id,
@@ -19,12 +20,14 @@ export default function DraggableSignature({
         position: "absolute",
         left: position.x,
         top: position.y,
-        width: size.width,
-        height: size.height,
         transform: transform
             ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
             : undefined,
+        width: size.width,
+        height: size.height,
         zIndex: 100,
+        cursor: "grab",
+        pointerEvents: "auto",
     };
 
     const handleResize = (e: any, corner: string) => {
@@ -60,8 +63,8 @@ export default function DraggableSignature({
             <div
                 {...listeners}
                 {...attributes}
-                onMouseDown={onSelect}
-                className="w-full h-full cursor-move relative"
+                // onMouseDown={onSelect}
+                className="absolute inset-0 cursor-move z-10"
             >
                 {image ? (
                     <img src={image} className="w-full h-full object-contain pointer-events-none" />
@@ -86,6 +89,14 @@ export default function DraggableSignature({
                         }}
                     />
                 ))}
+                {/* ❌ DELETE BUTTON (top-right corner) */}
+                <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => onDelete(id)}
+                    className="absolute -top-2 -right-2 bg-red-600 text-white w-5 h-5 text-xs rounded-full z-50"
+                >
+                    ✕
+                </button>
             </div>
         </div>
     );

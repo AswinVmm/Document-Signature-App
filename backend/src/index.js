@@ -5,6 +5,7 @@ import authRoutes from "./routes/authRoutes.js";
 import authMiddleware from "./middleware/authMiddleware.js";
 import cookieParser from "cookie-parser";
 import docsRoutes from "./routes/docsRoutes.js";
+import auditRoutes from "./routes/auditRoutes.js";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(express.json());
 // routes
 app.use("/api/auth", authRoutes);
 app.use("/api/docs", docsRoutes);
+app.use("/api/audit", auditRoutes);
 
 // test route
 app.get("/", (req, res) => {

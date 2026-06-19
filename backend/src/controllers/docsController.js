@@ -35,6 +35,7 @@ export const uploadDocument = async (req, res) => {
                     filename: fileName,
                     original_name: file.originalname,
                     size: file.size,
+                    status: "pending",
                 },
             ])
             .select();
@@ -69,12 +70,14 @@ export const getDocument = async (req, res) => {
 };
 
 export const listDocuments = async (req, res) => {
-    const userId = req.user.id;
+    let query = supabase.from("documents").select("*");
 
-    const { data, error } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("user_id", userId);
+    // ✅ if NOT admin → filter
+    if (req.user.role !== "admin") {
+        query = query.eq("user_id", req.user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -130,77 +133,144 @@ export const signDocument = async (req, res) => {
 };
 
 export const exportSignedPdf = async (req, res) => {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    const { data: doc } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("id", id)
-        .single();
+        const { data: doc } = await supabase
+            .from("documents")
+            .select("*")
+            .eq("id", id)
+            .single();
 
-    const { data: sigs } = await supabase
-        .from("signatures")
-        .select("*")
-        .eq("document_id", id)
-        .order("created_at", { ascending: false })
-
-
-
-    if (!sig) {
-        return res.status(400).json({ error: "No signature found" });
-    }
-    // get PDF
-    const { data: signedUrl } = await supabase.storage
-        .from("documents")
-        .createSignedUrl(doc.filename, 60);
-
-    const pdfBytes = await fetch(signedUrl.signedUrl).then(res =>
-        res.arrayBuffer()
-    );
-
-    const pdfDoc = await PDFDocument.load(pdfBytes, {
-        ignoreEncryption: true,
-    });
-
-    const pages = pdfDoc.getPages();
-    for (const sig of sigs) {
-        const page = pages[sig.page - 1];
-        const { width, height } = page.getSize();
-
-        const drawWidth = sig.width * width;
-        const drawHeight = sig.height * height;
-
-        const x = sig.x * width;
-        const y = height - (sig.y * height) - drawHeight;
-
-        const base64 = sig.image.split(",")[1];
-        const imageBytes = Buffer.from(base64, "base64");
-
-        let embeddedImage;
-
-        if (sig.image.includes("image/png")) {
-            embeddedImage = await pdfDoc.embedPng(imageBytes);
-        } else {
-            embeddedImage = await pdfDoc.embedJpg(imageBytes);
+        if (!doc) {
+            return res.status(404).json({ error: "Document not found" });
         }
 
-        page.drawImage(embeddedImage, {
-            x,
-            y,
-            width: drawWidth,
-            height: drawHeight,
+        const { data: sigs } = await supabase
+            .from("signatures")
+            .select("*")
+            .eq("document_id", id)
+            .order("created_at", { ascending: false })
+
+        if (!sigs || sigs.length === 0) {
+            return res.status(400).json({ error: "No signature found" });
+        }
+        // get PDF
+        const { data: signedUrl, error: urlError } = await supabase.storage
+            .from("documents")
+            .createSignedUrl(doc.filename, 60);
+
+        if (urlError) {
+            return res.status(400).json({ error: urlError.message });
+        }
+        const pdfBytes = await fetch(signedUrl.signedUrl).then(res => {
+            if (!res.ok) throw new Error("Failed to fetch PDF");
+            return res.arrayBuffer();
         });
 
-        // ✅ Draw role label (DocuSign style)
-        page.drawText(sig.role || "Signer", {
-            x,
-            y: y - 12,
-            size: 10,
+        const pdfDoc = await PDFDocument.load(pdfBytes, {
+            ignoreEncryption: true,
         });
+
+        const pages = pdfDoc.getPages();
+        for (const sig of sigs) {
+            const page = pages[sig.page - 1];
+            const { width, height } = page.getSize();
+
+            const drawWidth = sig.width * width;
+            const drawHeight = sig.height * height;
+
+            const x = sig.x * width;
+            const y = height - (sig.y * height) - drawHeight + 84;
+
+            const base64 = sig.image.split(",")[1];
+            const imageBytes = Buffer.from(base64, "base64");
+
+            let embeddedImage;
+
+            if (sig.image.includes("image/png")) {
+                embeddedImage = await pdfDoc.embedPng(imageBytes);
+            } else {
+                embeddedImage = await pdfDoc.embedJpg(imageBytes);
+            }
+
+            page.drawImage(embeddedImage, {
+                x,
+                y,
+                width: drawWidth,
+                height: drawHeight,
+            });
+
+            // ✅ Draw role label (DocuSign style)
+            page.drawText(sig.role || "Signer", {
+                x,
+                y: y - 3,
+                size: 10,
+            });
+        }
+        const finalPdf = await pdfDoc.save();
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "attachment; filename=signed.pdf");
+        res.send(Buffer.from(finalPdf));
+    } catch (err) {
+        console.error("EXPORT ERROR:", err);
+        res.status(500).json({ error: err.message });
     }
-    const finalPdf = await pdfDoc.save();
+};
+export const replaceSignatures = async (req, res) => {
+    const { id } = req.params;
+    const signatures = req.body.signatures;
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=signed.pdf");
-    res.send(Buffer.from(finalPdf));
+    // ❌ delete old signatures
+    await supabase
+        .from("signatures")
+        .delete()
+        .eq("document_id", id);
+
+    // ✅ insert fresh ones
+    const { error } = await supabase
+        .from("signatures")
+        .insert(
+            signatures.map(sig => ({
+                document_id: id,
+                x: sig.x,
+                y: sig.y,
+                page: sig.page,
+                image: sig.image,
+                width: sig.width,
+                height: sig.height,
+                role: sig.role
+            }))
+        );
+
+    if (error) return res.status(400).json({ error: error.message });
+
+    res.json({ message: "Signatures replaced" });
+};
+
+export const acceptDoc = async (req, res) => {
+    const { id } = req.params;
+
+    await supabase
+        .from("documents")
+        .update({ status: "signed" })
+        .eq("id", id);
+
+    res.json({ message: "Document signed" });
+};
+
+export const rejectDoc = async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    await supabase
+        .from("documents")
+        .update({
+            status: "rejected",
+            rejection_reason: reason,
+        })
+        .eq("id", id);
+
+    res.json({ message: "Document rejected" });
 };

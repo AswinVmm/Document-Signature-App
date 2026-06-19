@@ -7,23 +7,34 @@ const AuthContext = createContext<any>(null);
 
 export const AuthProvider = ({ children }: any) => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [role, setRole] = useState<string | null>(null);
 
-    // 🔥 check auth via backend
+    // check auth via backend
     useEffect(() => {
         API.get("/api/protected")
-            .then(() => setIsLoggedIn(true))
-            .catch(() => setIsLoggedIn(false));
+            .then((res) => {
+                setIsLoggedIn(true);
+                setRole(res.data.user.role);
+            })
+            .catch(() => {
+                setIsLoggedIn(false);
+                setRole(null);
+            });
     }, []);
 
-    const login = () => setIsLoggedIn(true);
+    const login = (userRole: string) => {
+        setIsLoggedIn(true);
+        setRole(userRole); // ✅ store role on login
+    };
 
     const logout = async () => {
         await API.post("/api/auth/logout");
         setIsLoggedIn(false);
+        setRole(null);
     };
 
     return (
-        <AuthContext.Provider value={{ isLoggedIn, login, logout }}>
+        <AuthContext.Provider value={{ isLoggedIn, role, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

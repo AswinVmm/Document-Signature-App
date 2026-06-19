@@ -43,7 +43,6 @@ export default function Viewer() {
     const [activeId, setActiveId] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // const rect = pdfRef.current?.getBoundingClientRect();
     const sensors = useSensors(
         useSensor(MouseSensor, {
             activationConstraint: {
@@ -53,16 +52,6 @@ export default function Viewer() {
         useSensor(TouchSensor)
     );
 
-    const sorted = [...signatures].sort((a, b) => a.order - b.order);
-
-    for (let i = 0; i < sorted.length; i++) {
-        if (!sorted[i].image) {
-            alert(`Signer ${sorted[i].role} must sign first`);
-            return;
-        }
-    }
-
-    // normalized position/size relative to the PDF dimensions
     useEffect(() => {
         // ✅ Import ONLY in browser
         import("react-pdf").then((mod) => {
@@ -117,36 +106,95 @@ export default function Viewer() {
                     </option>
                 ))}
             </select>
-            <button
-                onClick={async () => {
-                    const sorted = [...signatures].sort((a, b) => a.order - b.order);
+            <div className="flex gap-4 mt-4">
+                <button className="bg-green-500 text-white px-4 py-2"
+                    onClick={async () => {
+                        try {
+                            const sorted = [...signatures].sort((a, b) => a.order - b.order);
+                            if (!signatureImage) {
+                                alert("Please add signature first");
+                                return;
+                            }
 
-                    for (let i = 0; i < sorted.length; i++) {
-                        if (!sorted[i].image) {
-                            alert(`Signer ${sorted[i].role} must sign first`);
-                            return;
+                            try {
+                                // ✅ mark as SIGNED
+                                await API.post(`/api/docs/${id}/accept`);
+
+                                // 👉 your existing download logic here
+                                alert("Document signed & downloaded ✅");
+                            } catch (err) {
+                                alert("Failed to sign document");
+                            }
+                            for (let i = 0; i < sorted.length; i++) {
+                                if (!sorted[i].image) {
+                                    alert(`Signer ${sorted[i].role} must sign first`);
+                                    return;
+                                }
+                            }
+
+                            // for (const sig of signatures) {
+                            await API.post(`/api/docs/${id}/sign`, {
+                                signatures: signatures.map(sig => ({
+                                    x: sig.x / 600,
+                                    y: sig.y / 800,
+                                    width: sig.width / 600,
+                                    height: sig.height / 800,
+                                    page: sig.page,
+                                    image: sig.image,
+                                    role: sig.role,
+                                })),
+                            });
+                            // }
+                            // ✅ CALL EXPORT API
+                            const response = await API.get(`/api/docs/${id}/export`, {
+                                responseType: "blob", // VERY IMPORTANT
+                            });
+
+                            // ✅ CREATE DOWNLOAD
+                            const blob = new Blob([response.data], { type: "application/pdf" });
+                            const url = window.URL.createObjectURL(blob);
+
+                            const link = document.createElement("a");
+                            link.href = url;
+                            link.setAttribute("download", "signed-document.pdf");
+                            document.body.appendChild(link);
+                            link.click();
+
+                            link.remove();
+                            window.URL.revokeObjectURL(url);
+
+                            alert("Downloaded successfully!");
+
+                        } catch (err) {
+                            console.error(err);
+                            alert("Error downloading PDF");
                         }
-                    }
+                    }}
+                >
+                    Save & Download
+                </button>
+                <button
+                    className="bg-red-500 text-white px-4 py-2 mt-2"
+                    onClick={async () => {
+                        const reason = prompt("Enter rejection reason:");
 
-                    for (const sig of signatures) {
-                        await API.post(`/api/docs/${id}/sign`, {
-                            normalized: {
-                                x: sig.x / 600,
-                                y: sig.y / 800,
-                            },
-                            width: sig.width / 600,
-                            height: sig.height / 800,
-                            page: sig.page,
-                            image: sig.image,
-                            role: sig.role,
-                        });
-                    }
+                        if (!reason) return;
 
-                    alert("Saved!");
-                }}
-            >
-                Save
-            </button>
+                        try {
+                            await API.post(`/api/docs/${id}/reject`, { reason });
+
+                            alert("Document rejected ❌");
+
+                            // optional: redirect back
+                            window.location.href = "/documents";
+                        } catch (err) {
+                            alert("Failed to reject document");
+                        }
+                    }}
+                >
+                    Reject
+                </button>
+            </div>
             <div ref={pdfRef} className="flex flex-col items-center relative">
 
                 {url ? (
@@ -156,21 +204,76 @@ export default function Viewer() {
                             const { delta, active } = event;
 
                             setSignatures((prev) =>
-                                prev.map((sig) =>
-                                    sig.id === active.id
-                                        ? {
-                                            ...sig,
-                                            x: sig.x + delta.x,
-                                            y: sig.y + delta.y,
-                                        }
-                                        : sig
-                                )
+                                prev.map((sig) => {
+                                    if (sig.id !== active.id) return sig;
+
+                                    const newY = sig.y + delta.y;
+                                    const newPage = Math.floor(newY / 800) + 1;
+                                    const localY = ((newY % 800) + 800) % 800;
+
+                                    return {
+                                        ...sig,
+                                        x: sig.x + delta.x,
+                                        y: localY,
+                                        page: Math.max(1, newPage),
+                                    };
+                                })
                             );
                         }}
-                        modifiers={[restrictToParentElement]}
+                    // modifiers={[restrictToParentElement]}
                     >
-                        <div className="relative inline-block">
+                        <div className="relative" style={{ width: 600, height: numPages * 800, position: "relative" }}>
+                            <div className="mb-4 space-y-2 flex  flex-wrap gap-3 relative z-[100]">
+                                {signatures.map((sig) => (
+                                    <div key={sig.id} className="flex gap-2 items-center  border px-2 py-1 rounded">
 
+                                        <span className="font-semibold">Sig:</span>
+
+                                        {/* ROLE */}
+                                        <select
+                                            value={sig.role}
+                                            onChange={(e) => {
+                                                setSignatures(prev =>
+                                                    prev.map(s =>
+                                                        s.id === sig.id
+                                                            ? { ...s, role: e.target.value }
+                                                            : s
+                                                    )
+                                                );
+                                            }}
+                                        >
+                                            <option value="signer">Signer</option>
+                                            <option value="witness">Witness</option>
+                                            <option value="approver">Approver</option>
+                                        </select>
+
+                                        {/* ORDER */}
+                                        <input
+                                            type="number"
+                                            value={sig.order}
+                                            onChange={(e) => {
+                                                setSignatures(prev =>
+                                                    prev.map(s =>
+                                                        s.id === sig.id
+                                                            ? { ...s, order: Number(e.target.value) }
+                                                            : s
+                                                    )
+                                                );
+                                            }}
+                                            className="border w-10 mr-2"
+                                        />
+                                        {/* ❌ DELETE BUTTON */}
+                                        <button
+                                            onClick={() => {
+                                                setSignatures(prev => prev.filter(s => s.id !== sig.id));
+                                            }}
+                                            className="bg-red-500 text-white px-2 py-1 rounded text-sm"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                             {/* ✅ PDF (NON-INTERACTIVE ONLY) */}
                             <Document file={url} onLoadSuccess={({ numPages }) => setNumPages(numPages)}>
                                 {Array.from(new Array(numPages), (_, i) => (
@@ -182,77 +285,37 @@ export default function Viewer() {
                                             renderTextLayer={false}
                                             className="pointer-events-none"
                                         />
-
-                                        {/* ✅ SIGNATURES ONLY FOR THIS PAGE */}
-                                        <div className="absolute top-0 left-0 w-full h-full">
-                                            {signatures
-                                                .filter(sig => sig.page === i + 1)
-                                                .map((sig, index) => (
-                                                    <div key={sig.id} className="flex gap-2 items-center mt-2">
-                                                        <select
-                                                            value={sig.role}
-                                                            onChange={(e) => {
-                                                                const updated = [...signatures];
-                                                                updated[index].role = e.target.value;
-                                                                setSignatures(updated);
-                                                            }}
-                                                        >
-                                                            <option>Signer</option>
-                                                            <option>Witness</option>
-                                                            <option>Approver</option>
-                                                        </select>
-
-                                                        <input
-                                                            type="number"
-                                                            value={sig.order}
-                                                            onChange={(e) => {
-                                                                const updated = [...signatures];
-                                                                updated[index].order = Number(e.target.value);
-                                                                setSignatures(updated);
-                                                            }}
-                                                            className="border w-16"
-                                                        />
-
-                                                        <DraggableSignature
-                                                            key={sig.id}
-                                                            id={sig.id}
-                                                            image={sig.image}
-                                                            position={{ x: sig.x, y: sig.y }}
-                                                            size={{ width: sig.width, height: sig.height }}
-                                                            onResize={(newSize: { width: number; height: number }) => {
-                                                                const updated = [...signatures];
-                                                                updated[index].width = newSize.width;
-                                                                updated[index].height = newSize.height;
-                                                                setSignatures(updated);
-                                                            }}
-                                                            onSelect={() => setActiveId(sig.id)}
-                                                        />
-                                                    </div>
-                                                ))}
-                                        </div>
                                     </div>
+
                                 ))}
                             </Document>
-
-                            {/* ✅ DRAG LAYER (interactive) */}
-                            {/* <div className="absolute top-0 left-0 w-full h-full z-50">
-                                {signatures.map((sig, index) => (
+                            <div className="absolute top-0 left-0 w-full h-full z-50">
+                                {signatures.map((sig) => (
                                     <DraggableSignature
                                         key={sig.id}
                                         id={sig.id}
                                         image={sig.image}
-                                        position={{ x: sig.x, y: sig.y }}
+                                        position={{
+                                            x: sig.x,
+                                            y: (sig.page - 1) * 800 + sig.y, // 🔥 CRITICAL FIX
+                                        }}
                                         size={{ width: sig.width, height: sig.height }}
                                         onResize={(newSize: { width: number; height: number }) => {
-                                            const updated = [...signatures];
-                                            updated[index].width = newSize.width;
-                                            updated[index].height = newSize.height;
-                                            setSignatures(updated);
+                                            setSignatures((prev) =>
+                                                prev.map((s) =>
+                                                    s.id === sig.id
+                                                        ? { ...s, width: newSize.width, height: newSize.height }
+                                                        : s
+                                                )
+                                            );
                                         }}
                                         onSelect={() => setActiveId(sig.id)}
+                                        onDelete={(id: string) => {
+                                            setSignatures(prev => prev.filter(s => s.id !== id));
+                                        }}
                                     />
                                 ))}
-                            </div> */}
+                            </div>
 
                         </div>
                     </DndContext>

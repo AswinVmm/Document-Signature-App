@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth";
 
 export default function Navbar() {
-    const { isLoggedIn, logout } = useAuth();
+    const { isLoggedIn, role, logout } = useAuth();
 
     const handleLogout = async () => {
         await logout();
@@ -21,27 +21,35 @@ export default function Navbar() {
 
             {/* Links */}
             <div className="flex gap-6 items-center">
-                <Link href="/" className="hover:text-blue-500">
-                    Home
-                </Link>
 
-                {isLoggedIn && (
-                    <Link href="/upload" className="hover:text-blue-500">
-                        Upload
-                    </Link>
+                {/* Show ONLY for normal users */}
+                {isLoggedIn && role !== "admin" && (
+                    <>
+                        <Link href="/" className="hover:text-blue-500">
+                            Home
+                        </Link>
+
+                        <Link href="/upload" className="hover:text-blue-500">
+                            Upload
+                        </Link>
+
+                        <Link href="/documents" className="hover:text-blue-500">
+                            Documents
+                        </Link>
+                    </>
                 )}
-                {isLoggedIn && (
-                    <Link href="/documents" className="hover:text-blue-500">
-                        Documents
+
+                {/* Optional: Admin links */}
+                {isLoggedIn && role === "admin" && (
+                    <Link href="/admin" className="hover:text-blue-500">
+                        Admin Dashboard
                     </Link>
                 )}
 
                 {!isLoggedIn ? (
-                    <>
-                        <Link href="/register" className=" hover:bg-green-600 bg-green-500 hover:text-white px-3 py-1 rounded">
-                            Login/Register
-                        </Link>
-                    </>
+                    <Link href="/register" className="hover:bg-green-600 bg-green-500 hover:text-white px-3 py-1 rounded">
+                        Login/Register
+                    </Link>
                 ) : (
                     <button
                         onClick={handleLogout}
@@ -50,7 +58,6 @@ export default function Navbar() {
                         Logout
                     </button>
                 )}
-
             </div>
         </nav>
     );
